@@ -1,0 +1,63 @@
+{
+    "GCC": {
+      "Csmith": {
+        "Crash": 0,
+        "Miscompilation": 0
+      },
+      "DST": {
+        "Crash": 0,
+        "Miscompilation": 0
+      },
+      "Creal": {
+        "Crash": 2,
+        "Miscompilation": 0
+      },
+      "Fuzz4All": {
+        "Crash": 1,
+        "Miscompilation": 0
+      },
+      "WhiteFox": {
+        "Crash": 2,
+        "Miscompilation": 0
+      },
+      "LegoFuzz": {
+        "Crash": 3,
+        "Miscompilation": 3
+      },
+      "GapSmith": {
+        "Crash": 4,
+        "Miscompilation": 1
+      }
+    },
+    "LLVM": {
+      "Csmith": {
+        "Crash": 0,
+        "Miscompilation": 0
+      },
+      "DST": {
+        "Crash": 0,
+        "Miscompilation": 0
+      },
+      "Creal": {
+        "Crash": 2,
+        "Miscompilation": 2
+      },
+      "Fuzz4All": {
+        "Crash": 1,
+        "Miscompilation": 0
+      },
+      "WhiteFox": {
+        "Crash": 1,
+        "Miscompilation": 1
+      },
+      "LegoFuzz": {
+        "Crash": 5,
+        "Miscompilation": 4
+      },
+      "GapSmith": {
+        "Crash": 4,
+        "Miscompilation": 3
+      }
+    }
+  }
+  

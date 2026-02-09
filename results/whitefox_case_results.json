@@ -1,0 +1,8 @@
+{
+    "GapSmith": 
+    ["DCE", "ADCE", "BDCE", "DeadStoreElimination", "SCCP", "GVN", "NewGVN", "SimplifyCFG", "JumpThreading", "LICM", "LoopUnroll", "IndVarSimplify", "ConstraintElimination", "InferAlignment", "AlignmentFromAssumptions", "GuardWidening", "LowerAtomic", "Scalarizer", "SeparateConstOffsetFromGEP"],
+    "WhiteFox": 
+    ["DCE", "ADCE", "DeadStoreElimination", "SCCP", "GVN", "SimplifyCFG", "JumpThreading", "LICM", "ConstraintElimination", "LoopDeletion", "RewriteStatepointsForGC"]
+
+}
+  
