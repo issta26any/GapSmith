@@ -1,209 +1,193 @@
 import os
 import re
-from collections import OrderedDict
+
 
 class UncoveredBlockAnalyzer:
-    def __init__(self, gcov_file):
+    def __init__(self, gcov_file: str, context_limit: int = 20):
+        """
+        Uncovered block analyzer
+        Function:
+        - Parse .gcov file
+        - Extract consecutive uncovered blocks (#####)
+        - Extract at most context_limit lines of "covered code" before and after each uncovered block as context
+        :param gcov_file: .gcov file path
+        :param context_limit: context limit
+        """
         self.gcov_file = gcov_file
-        self.uncovered_blocks = [] 
-        self.line_pattern = re.compile(r'^\s*(?P<count>[#\-\d]+):\s*(?P<line_num>\d+):(?P<code>.*)$')
-    
-    def parse_gcov_file(self):
+        self.context_limit = context_limit
+        self.line_pattern = re.compile(
+            r'^\s*(?P<count>[#\-\d]+):\s*(?P<line_num>\d+):(?P<code>.*)$'
+        )
+        self.entries = []  # [{"count","line_num","code"}...]
+        self.blocks = []
+
+    def _is_pure_comment(self, code: str) -> bool:
+        """
+        Check if the line is a pure comment line (avoid treating comments as executable code)
+        """
+        s = code.strip()
+        return s.startswith('//') or s.startswith('/*') or s.startswith('*')
+
+    def _is_code_line(self, code: str) -> bool:
+        """
+        Check if the line is a valid code line (not empty, not pure comment)
+        """
+        return bool(code.strip()) and (not self._is_pure_comment(code))
+
+    def _is_covered(self, count: str, code: str) -> bool:
+        """
+        Check if the line is a covered code line
+        Conditions:
+        - count is a number (execution count)
+        - is a valid code line
+        """
+        return count.isdigit() and self._is_code_line(code)
+
+    def _is_uncovered_exec(self, count: str, code: str) -> bool:
+        """
+        Check if the line is a truly uncovered executable code
+        Conditions:
+        - count == '#####'
+        - is a valid code line
+        """
+        return (count == '#####') and self._is_code_line(code)
+
+    def _is_neutral(self, count: str) -> bool:
+        """
+        Check if the line is a neutral line
+        Conditions:
+        - count == '-'
+        """
+        return count == '-'
+
+    def parse(self):
+        """
+        Parse gcov file, and build uncovered blocks
+        """
+
         if not os.path.isfile(self.gcov_file):
             raise FileNotFoundError(f"file not found: {self.gcov_file}")
-        
-        current_block = []  
-        start_line = None    
-        
+        self.entries.clear()
+        self.blocks.clear()
         with open(self.gcov_file, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                match = self.line_pattern.match(line)
-                if not match:
+            for raw in f:
+                m = self.line_pattern.match(raw)
+                if not m:
                     continue
-                
-                count = match.group('count').strip()
-                line_num = int(match.group('line_num'))
-                code = match.group('code')
-            
-                if count == '#####':
 
-                    if not current_block:
-                        start_line = line_num
-                    current_block.append({
-                        'line_num': line_num,
-                        'code': code
-                    })
-                else:
-    
-                    if current_block:
-                        self._save_block(start_line, current_block)
-                        current_block = []
-                        start_line = None
-            
+                self.entries.append({
+                    "count": m.group("count").strip(),
+                    "line_num": int(m.group("line_num")),
+                    "code": m.group("code")
+                })
 
-            if current_block:
-                self._save_block(start_line, current_block)
-    
-    def _save_block(self, start_line, block):
+        in_block = False
+        start_idx = None
+        cur_block = []
+        uncovered_exec_count = 0  
+        for idx, e in enumerate(self.entries):
+            c = e["count"]
+            code = e["code"]
+            if self._is_uncovered_exec(c, code):
+                if not in_block:
+                    in_block = True
+                    start_idx = idx
+                    cur_block = []
+                    uncovered_exec_count = 0
 
-        non_empty_lines = [
-            line for line in block 
-            if line['code'].strip() and not self._is_pure_comment(line['code'])
-        ]
-        
-        if non_empty_lines:
-            end_line = block[-1]['line_num']
-            self.uncovered_blocks.append({
-                'start_line': start_line,
-                'end_line': end_line,
-                'block_size': len(block),
-                'code_lines': block
-            })
-    
-    def _is_pure_comment(self, code):
+                cur_block.append(e)
+                uncovered_exec_count += 1
+                continue
+            if in_block and self._is_neutral(c):
+                cur_block.append(e)
+                continue
+            if in_block:
+                end_idx = idx - 1
+                self._save_block(start_idx, end_idx, cur_block, uncovered_exec_count)
+                in_block = False
+                start_idx = None
+                cur_block = []
+                uncovered_exec_count = 0
+        if in_block and start_idx is not None and cur_block:
+            self._save_block(start_idx, len(self.entries) - 1, cur_block, uncovered_exec_count)
 
-        stripped = code.strip()
-        # C/C++ 注释判断
-        if stripped.startswith('//') or stripped.startswith('/*') or stripped.startswith('*'):
-            return True
-        return False
-    
-    def sort_blocks_by_size(self):
+    def _collect_context(self, start_idx: int, end_idx: int):
+        """
+        Collect at most context_limit lines of "covered code" before and after each uncovered block
+        """
+        before = []
+        i = start_idx - 1
+        while i >= 0 and len(before) < self.context_limit:
+            e = self.entries[i]
+            if self._is_covered(e["count"], e["code"]):
+                before.append(e)
+            i -= 1
+        before.reverse()
+        after = []
+        i = end_idx + 1
+        while i < len(self.entries) and len(after) < self.context_limit:
+            e = self.entries[i]
+            if self._is_covered(e["count"], e["code"]):
+                after.append(e)
+            i += 1
 
-        self.uncovered_blocks.sort(key=lambda x: x['block_size'], reverse=True)
-    
-    def get_blocks(self):
-        
-        return self.uncovered_blocks
-    
-    def print_blocks(self, max_blocks=None, min_size=1):
-        
-        filtered_blocks = [b for b in self.uncovered_blocks if b['block_size'] >= min_size]
-        blocks_to_print = filtered_blocks[:max_blocks] if max_blocks else filtered_blocks
-        
-        print(f"\n{'='*80}")
-        print(f"file: {os.path.basename(self.gcov_file)}")
-        print(f"total {len(filtered_blocks)} uncovered blocks (>= {min_size} lines)")
-        print(f"{'='*80}\n")
-        
-        for idx, block in enumerate(blocks_to_print, 1):
-            self._print_single_block(idx, block)
-    
-    def _print_single_block(self, idx, block):
-        start = block['start_line']
-        end = block['end_line']
-        size = block['block_size']
-        
-        print(f"[Block {idx}] 行 {start}-{end} (共 {size} 行)")
-        print("-" * 80)
-        
-        for line_info in block['code_lines']:
-            line_num = line_info['line_num']
-            code = line_info['code']
-            print(f"#####: {line_num:5d}:{code}")
-        
-        print()
-    
-    def export_to_file(self, output_file, min_size=1):
-        filtered_blocks = [b for b in self.uncovered_blocks if b['block_size'] >= min_size]
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(f"{'='*80}\n")
-            f.write(f"file: {os.path.basename(self.gcov_file)}\n")
-            f.write(f"total {len(filtered_blocks)} uncovered blocks (>= {min_size} lines)\n")
-            f.write(f"{'='*80}\n\n")
-            
-            for idx, block in enumerate(filtered_blocks, 1):
-                start = block['start_line']
-                end = block['end_line']
-                size = block['block_size']
-                
-                f.write(f"[Block {idx}] 行 {start}-{end} (共 {size} 行)\n")
-                f.write("-" * 80 + "\n")
-                
-                for line_info in block['code_lines']:
-                    line_num = line_info['line_num']
-                    code = line_info['code']
-                    f.write(f"#####: {line_num:5d}:{code}\n")
-                
-                f.write("\n")
-        
-        print(f"result saved to: {output_file}")
-    
-    def get_statistics(self):
-        if not self.uncovered_blocks:
-            return {
-                'total_blocks': 0,
-                'total_lines': 0,
-                'max_block_size': 0,
-                'avg_block_size': 0
-            }
-        
-        total_lines = sum(b['block_size'] for b in self.uncovered_blocks)
-        max_size = max(b['block_size'] for b in self.uncovered_blocks)
-        avg_size = total_lines / len(self.uncovered_blocks)
-        
-        return {
-            'total_blocks': len(self.uncovered_blocks),
-            'total_lines': total_lines,
-            'max_block_size': max_size,
-            'avg_block_size': avg_size
-        }
-    
-    def print_statistics(self):
-        stats = self.get_statistics()
-        print(f"\nstatistics:")
-        print(f"  total uncovered blocks: {stats['total_blocks']}")
-        print(f"  total uncovered lines: {stats['total_lines']}")
-        print(f"  max block size: {stats['max_block_size']} lines")
-        print(f"  avg block size: {stats['avg_block_size']:.2f} lines")
-    
-    def get_single_block(self, block_index=0):
-        if not self.uncovered_blocks:
-            return None
-        
-        if block_index >= len(self.uncovered_blocks):
-            return None
-        
-        block = self.uncovered_blocks[block_index]
+        return before + after
 
-        code_lines = []
-        for line_info in block['code_lines']:
-            code_lines.append(line_info['code'])
-        
-        return {
-            'start_line': block['start_line'],
-            'end_line': block['end_line'],
-            'block_size': block['block_size'],
-            'code_text': '\n'.join(code_lines)
-        }
-    
-    def print_single_block_clean(self, block_index=0):
-        block_data = self.get_single_block(block_index)
-        
-        if not block_data:
-            print(f"block index {block_index} not found")
-            return
-        
-        print(f"\n{'='*80}")
-        print(f"Block {block_index + 1}: line {block_data['start_line']}-{block_data['end_line']} (total {block_data['block_size']} lines)")
-        print(f"{'='*80}")
-        print(block_data['code_text'])
-        print(f"{'='*80}\n")
-    
-    def export_single_block_clean(self, output_file, block_index=0):
-        block_data = self.get_single_block(block_index)
-        
-        if not block_data:
-            print(f"block index {block_index} not found")
-            return
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(f"// Block {block_index + 1}: 行 {block_data['start_line']}-{block_data['end_line']} (共 {block_data['block_size']} 行)\n")
-            f.write(f"// File: {os.path.basename(self.gcov_file)}\n\n")
-            f.write(block_data['code_text'])
-            f.write("\n")
-        
-        print(f"block saved to: {output_file}")
-        print(f"line {block_data['start_line']}-{block_data['end_line']} (total {block_data['block_size']} lines)")
+    def _save_block(self, start_idx: int, end_idx: int, uncovered_block, uncovered_exec_count: int):
+        """
+        Save block:
+        - block_size only counts ##### executable lines
+        - if there is no context, covered_context = None
+        """
+        covered_context = self._collect_context(start_idx, end_idx)
 
+        if not covered_context:
+            covered_context = None
+
+        self.blocks.append({
+            "covered_context": covered_context,
+            "uncovered_block": uncovered_block,
+            "block_size": uncovered_exec_count
+        })
+
+    def print_blocks(self, max_blocks: int = 1):
+        """
+        Print uncovered blocks
+        """
+        self.blocks.sort(key=lambda b: b["block_size"], reverse=True)
+        blocks_to_print = self.blocks[:max_blocks]
+        print(f"\nfile: {os.path.basename(self.gcov_file)}")
+        print(f"uncovered blocks: {len(self.blocks)} (showing {len(blocks_to_print)})")
+        print("=" * 90)
+        for i, b in enumerate(blocks_to_print, 1):
+            ub = b["uncovered_block"]
+            start_line = ub[0]["line_num"]
+            end_line = ub[-1]["line_num"]
+            print(f"\n[Block {i}] uncovered lines {start_line}-{end_line} "
+                  f"(exec_uncovered_size={b['block_size']})")
+            print("\ncovered_context:")
+            if b["covered_context"] is None:
+                print("(empty)")
+            else:
+                for e in b["covered_context"]:
+                    print(f"{e['count']:>5}: {e['line_num']:5d}:{e['code']}")
+            print("\nuncovered_block:")
+            for e in ub:
+                print(f"{e['count']:>5}: {e['line_num']:5d}:{e['code']}")
+
+            print("-" * 90)
+
+
+def main():
+    x = "/data/mingxuanzhu/SOLAR/c-ada-spec.cc.gcov"
+    if not x:
+        print("Empty input.")
+        return
+
+    analyzer = UncoveredBlockAnalyzer(x, context_limit=20)
+    analyzer.parse()
+    analyzer.print_blocks(max_blocks=1)
+
+
+if __name__ == "__main__":
+    main()
