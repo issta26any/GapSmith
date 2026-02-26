@@ -8,17 +8,19 @@ class GcovRunner:
     """
     Gcov tool for collecting coverage data from target directories
     """
-    def __init__(self, source_dirs: List[str], target_dirs: List[str], output_dir: str = "."):
+    def __init__(self, source_dirs: List[str], target_dirs: List[str], output_dir: str = ".", gcov_path: str = "gcov-13"):
         """
         :param source_dirs: .gcda/.gcno files directory
         :param target_dirs: source code directories
         :param output_dir: output coverage txt files directory
+        :param gcov_path: path to gcov executable (default: gcov-13)
         """
         if len(source_dirs) != len(target_dirs):
             raise ValueError("source_dirs and target_dirs must have the same length")
         self.source_dirs = source_dirs
         self.target_dirs = target_dirs
         self.output_dir = output_dir
+        self.gcov_path = gcov_path
         self.file_pattern = re.compile(r"File '(.*\.cc)'")
         self.coverage_pattern = re.compile(r"Lines executed:([\d.]+)% of (\d+)")
         self.coverage_results = [] 
@@ -49,7 +51,7 @@ class GcovRunner:
                             self.processed_files.add(abs_path)
                             try:
                                 proc = subprocess.run(
-                                    ['gcov-13', '-o', src_dir, cc_path],
+                                    [self.gcov_path, '-o', src_dir, cc_path],
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
                                     encoding='utf-8',
@@ -87,25 +89,3 @@ class GcovRunner:
         return (total_exec / total_lines) * 100 if total_lines > 0 else 0.0
 
         
-if __name__ == "__main__":
-    source_dirs = [
-        "../gcc-ztc-build/gcc/c",
-        "../gcc-ztc-build/gcc/c-family",
-        "../gcc-ztc-build/gcc/common",
-        "../gcc-ztc-build/gcc/cp",
-        "../gcc-ztc-build/gcc/lto",
-        "../gcc-ztc-build/gcc"
-    ]
-
-    target_dirs = [
-        "../gcc-14.3.0/gcc/c",
-        "../gcc-14.3.0/gcc/c-family",
-        "../gcc-14.3.0/gcc/common",
-        "../gcc-14.3.0/gcc/cp",
-        "../gcc-14.3.0/gcc/lto",
-        "../gcc-14.3.0/gcc"
-    ]
-    
-    runner = GcovRunner(source_dirs, target_dirs)
-    runner.run()
-    avg = runner.compute_average_coverage()

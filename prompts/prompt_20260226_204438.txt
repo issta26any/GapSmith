@@ -1,0 +1,41 @@
+[Role]
+    You are an expert C/C++ fuzzer and compiler test generator with deep understanding of compiler mechanisms.
+    Please generate test programs that satisfy the given requirements, target the specified coverage targets,
+    and explore compiler paths beyond those explicitly described.
+    [Failures Case]
+    
+    [Target Requirements]
+    Target compiler file:
+    gcc-14.3.0/gcc/simplify-rtx.cc
+    Coverage goal:
+    Trigger simplification patterns for signed/unsigned saturating division (SS_DIV/US_DIV) by constant 1, and for COPYSIGN operations with various operand patterns (identical operands, constant second operand, ABS/NEG/COPYSIGN as first or second operand) in the RTL simplification pass.
+    The compilation options targeted by the generated test program structure:
+    -O2 -fwrapv -fno-trapping-math -fsigned-zeros -fno-rounding-math
+    The basic blocks in gcc-14.3.0/gcc/simplify-rtx.cc to be covered by the generated program structure:
+    Generate RTL for signed or unsigned saturating division where the divisor is the constant integer 1. This requires C/C++ code that uses saturating arithmetic intrinsics (e.g., __ssdiv, __usdiv for ARM) or compiler-builtin saturation operations, applied to a variable divided by 1. Example: `int x; int y = __ssdiv(x, 1);` The compiler must lower this to RTL with code SS_DIV or US_DIV and op1 being CONST1_RTX.
+
+Generate RTL for COPYSIGN where both operands are identical RTX (same tree/value) and have no side effects. This requires an expression like `copysignf(x, x)` or `__builtin_copysign(x, x)`. The operands must be the same variable or constant.
+
+Generate RTL for COPYSIGN where the second operand is a constant floating-point value (CONST_DOUBLE). This requires `copysignf(x, 2.0f)` or `copysignf(x, -3.0)`. The constant must be representable as a CONST_DOUBLE in the target mode.
+
+Generate RTL for COPYSIGN where the first operand is a NEG or ABS unary operation. This requires `copysignf(-y, z)` or `copysignf(fabsf(y), z)`. The inner operation must be present in the RTL.
+
+Generate RTL for COPYSIGN where the second operand is an ABS operation without side effects. This requires `copysignf(x, fabsf(y))`. The ABS must not have side effects (e.g., not volatile).
+
+Generate RTL for COPYSIGN where the first operand is another COPYSIGN and its second operand has no side effects. This requires nested copysign like `copysignf(copysignf(a, b), c)` where `b` has no side effects.
+
+Generate RTL for COPYSIGN where the second operand is another COPYSIGN and its first operand has no side effects. This requires `copysignf(a, copysignf(b, c))` where `b` has no side effects.
+    [General Requirements]
+    Standards & Compliance: : ISO C99 compliant; self-contained and compilable with a standard gcc/llvm compiler; no undefined behavior or compiler extensions.
+    Program Structure: Include a main function and multiple helper functions; use non trivial control flow (e.g., nested conditionals, loops, and function calls).
+    Scale & Complexity: Approximately 80–120 lines of code; structurally complex enough to allow diverse compilation paths while remaining readable and well-formed.
+    Determinism & Inputs: No external inputs, system calls, or I/O dependencies; program behavior should be deterministic and reproducible.
+    [Instruction]
+    1. Generate test programs that match the given targeted requirements.
+    2.Avoid generating test programs that are structurally similar to given failure cases, based on reflection results.
+    3. Ensure the programs meet the general requirements and have a well-structured design.
+    4. Output complete, compilable C/C++ test program.
+    [Output]
+    Output a complete C/C++ test program only.
+    Do NOT include explanations or markdown fences.
+    

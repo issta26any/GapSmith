@@ -176,18 +176,3 @@ class UncoveredBlockAnalyzer:
                 print(f"{e['count']:>5}: {e['line_num']:5d}:{e['code']}")
 
             print("-" * 90)
-
-
-def main():
-    x = "/data/mingxuanzhu/SOLAR/c-ada-spec.cc.gcov"
-    if not x:
-        print("Empty input.")
-        return
-
-    analyzer = UncoveredBlockAnalyzer(x, context_limit=20)
-    analyzer.parse()
-    analyzer.print_blocks(max_blocks=1)
-
-
-if __name__ == "__main__":
-    main()

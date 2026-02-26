@@ -2,7 +2,7 @@ import os
 import re
 import math
 import random
-from typing import List, Dict
+from typing import List, Dict, Optional, Set
 
 class GapSmithSelector:
     """
@@ -71,33 +71,18 @@ class GapSmithSelector:
             target['Pf'] = pf
         self.targets.sort(key=lambda x: x['Pf'], reverse=True)
 
-    def select_next_target(self):
+    def select_next_target(self, exclude_files: Optional[Set[str]] = None):
         """
-        Select next target file
+        Select next target file.
+        :param exclude_files: Optional set of filenames to exclude (e.g. files with too many consecutive failures)
         """
         if not self.targets:
             return None
-        weights = [t['Pf'] for t in self.targets]
-        selected_list = random.choices(self.targets, weights=weights, k=1)
+        candidates = self.targets
+        if exclude_files:
+            candidates = [t for t in self.targets if t.get('filename') not in exclude_files]
+        if not candidates:
+            return None
+        weights = [t['Pf'] for t in candidates]
+        selected_list = random.choices(candidates, weights=weights, k=1)
         return selected_list[0]
-
-if __name__ == "__main__":
-    report_folder = "/data/mingxuanzhu/SOLAR"
-
-   
-
-    selector = GapSmithSelector(report_folder)
-
-    selector.parse_all_reports()
-    selector.calculate_metrics()
-
-    # 测试选择 5 次
-    for i in range(1, 6):
-        target = selector.select_next_target()
-        if target:
-            print(f"Iteration {i}:")
-            print(f"  Selected File : {target['filename']}")
-            print(f"  Pf Weight     : {target['Pf']:.6f}")
-            print("-" * 60)
-        else:
-            print("No target selected.")
