@@ -9,19 +9,13 @@ from collections import OrderedDict
 
 def clean_compile_options(text: str) -> str:
     """
-    从可能包含括号说明的文本中提取纯 gcc 编译选项。
-    例如: "-O2 -march=x86-64 (or any architecture...) -fno-schedule-insns"
-     -> "-O2 -march=x86-64 -fno-schedule-insns"
+    Clean compile options from a text string.
     """
     if not text or not isinstance(text, str):
         return ""
-    # 移除括号及其内的说明文字
     text = re.sub(r'\([^)]*\)', ' ', text)
-    # 移除方括号内的说明
     text = re.sub(r'\[[^\]]*\]', ' ', text)
-    # 移除 e.g. 等短语
     text = re.sub(r'\be\.g\.\s*[^,\n]+', ' ', text, flags=re.IGNORECASE)
-    # 提取所有 gcc 风格选项: -O, -f, -m, -W 等
     flags = re.findall(r'-(?:O[0-3s]?|[a-zA-Z][a-zA-Z0-9_\-=.,]*)', text)
     return ' '.join(flags) if flags else ""
 
@@ -457,7 +451,7 @@ def main():
     # Time limit: run for 2 hours (or set end_times list for multiple checkpoints)
     run_duration_hours = 2.0
     end_time = datetime.now() + timedelta(hours=run_duration_hours)
-    LOOP_BATCH_SIZE = 50  # 每轮生成的程序数量
+    LOOP_BATCH_SIZE = 50  # The number of programs generated in each iteration
 
     # Ensure directories exist
     for d in [COVERAGE_DIR, OUTPUT_DIR, PROMPT_DIR, BAD_CASES_DIR]:
@@ -525,7 +519,7 @@ def main():
         os.chdir(orig_cwd)
 
     # ---------- Phase 2: Coverage-driven loop ----------
-    # 记录每个文件连续覆盖失败的次数，超过10次不再选择，成功一次则清零
+    # Record the number of consecutive coverage failures for each file, if it exceeds 10 times, it will not be selected, if it succeeds once, it will be reset
     file_failure_count: Dict[str, int] = {}
     FAILURE_THRESHOLD = 10
 
@@ -624,7 +618,7 @@ def main():
         if not c_files:
             continue
 
-        # 2.7 编译前收集覆盖率（解析当前 .gcov 作为 before 状态）
+        # 2.7 Collect coverage before compilation
         cov_before = collect_all_gcov_state(COVERAGE_DIR)
 
         # 2.8 Compile all programs and concatenate compile errors
@@ -635,7 +629,7 @@ def main():
                 compile_errors.append(f"[{c_file.name}] {compile_err or 'Unknown error'}")
         compile_status = "\n".join(compile_errors) if compile_errors else "All programs compiled successfully"
 
-        # 2.9 编译后收集覆盖率
+        # 2.9 Collect coverage after compilation
         try:
             os.chdir(COVERAGE_DIR)
             runner = GcovRunner(source_dirs, target_dirs, output_dir=COVERAGE_DIR, gcov_path=GCOV_PATH)
@@ -652,18 +646,18 @@ def main():
         # 2.10 Check if target block is covered
         covered_any, _ = check_lines_coverage(uncovered_block_text, gcov_file)
 
-        # 每轮都保存 prompt（用时间戳命名）
+        # Save prompt for each iteration
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         prompt_path = Path(PROMPT_DIR) / f"prompt_{ts}.txt"
         prompt_path.write_text(full_prompt, encoding="utf-8")
         print(f"  [Prompt] Saved: {prompt_path}")
 
         if covered_any:
-            # Covered: 清零失败计数
+            # Covered: reset failure count
             file_failure_count[target_file] = 0
             print(f"  [Covered] Block covered!")
         else:
-            # Not covered: 失败计数 +1
+            # Not covered: increment failure count
             file_failure_count[target_file] = file_failure_count.get(target_file, 0) + 1
             # Not covered: save bad case
             folder_name = target_file.replace("\\", "/").replace("/", "__")
